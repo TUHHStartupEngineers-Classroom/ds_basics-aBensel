@@ -9,7 +9,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
 
 
-<meta name="author" content="Joschka Schwarz" />
+<meta name="author" content="Artur Bensel" />
 
 
 <title>01 Intro to the tidyverse</title>
@@ -375,40 +375,109 @@ div.tocify {
 
 
 <h1 class="title toc-ignore">01 Intro to the tidyverse</h1>
-<h4 class="author">Joschka Schwarz</h4>
+<h4 class="author">Artur Bensel</h4>
 <h4 class="date">2021-04</h4>
 
 </div>
 
 
-<p><strong>IMPORTANT:</strong> You can delete everything in here and start fresh. You might want to start by not deleting anything above this line until you know what that stuff is doing.</p>
-<p>This is an <code>.Rmd</code> file. It is plain text with special features. Any time you write just like this, it will be compiled to normal text in the website. If you put a # in front of your text, it will create a top level-header.</p>
-<div id="my-first-post" class="section level1">
-<h1><span class="header-section-number">1</span> My first post</h1>
-<p>Last compiled: 2021-04-21</p>
-<p>Notice that whatever you define as a top level header, automatically gets put into the table of contents bar on the left.</p>
-<div id="second-level-header" class="section level2">
-<h2><span class="header-section-number">1.1</span> Second level header</h2>
-<p>You can add more headers by adding more hashtags. These won’t be put into the table of contents</p>
-<div id="third-level-header" class="section level3">
-<h3><span class="header-section-number">1.1.1</span> third level header</h3>
-<p>Here’s an even lower level header Test Test Test</p>
+<div id="tidyverse" class="section level1">
+<h1><span class="header-section-number">1</span> Tidyverse</h1>
+<p>Last compiled: 2021-04-28</p>
+<div id="sales-by-state" class="section level2">
+<h2><span class="header-section-number">1.1</span> Sales by State</h2>
+<p>This section is pretty straight forward since it is basically the same as in section 6.1 from the tutorial. The column “location” was serpated into the two columns “city” and “state” before. It was then saved and can now be easily imported.</p>
+<div id="load-libraries-and-read-data" class="section level3">
+<h3><span class="header-section-number">1.1.1</span> Load libraries and read data</h3>
+<pre class="r"><code>library(tidyverse)
+library(readxl)
+library(lubridate)
+library(ggplot2)
+
+
+bike_orderlines_wrangled_tbl  &lt;- read_excel(path = &quot;ds_data/01_bike_sales/02_wrangled_data/bike_orderlines.xlsx&quot;)</code></pre>
+</div>
+<div id="data-wrangling" class="section level3">
+<h3><span class="header-section-number">1.1.2</span> Data Wrangling</h3>
+<p>Group by state and then summarize the sales.</p>
+<pre class="r"><code>sales_by_state_tbl &lt;- bike_orderlines_wrangled_tbl %&gt;%
+  
+  select(state, total_price) %&gt;%
+  
+  group_by(state) %&gt;% 
+  summarize(sales = sum(total_price)) %&gt;%
+
+  mutate(sales_text = scales::dollar(sales, big.mark = &quot;.&quot;, 
+                                     decimal.mark = &quot;,&quot;, 
+                                     prefix = &quot;&quot;, 
+                                     suffix = &quot; €&quot;))</code></pre>
+</div>
+<div id="plot-data" class="section level3">
+<h3><span class="header-section-number">1.1.3</span> Plot Data</h3>
+<pre class="r"><code>sales_by_state_tbl %&gt;%
+  
+  ggplot(aes(x = state, y = sales)) +
+  
+  geom_col(fill = &quot;#2DC6D6&quot;) +
+  geom_label(aes(label = sales_text)) +
+  
+  scale_y_continuous(labels = scales::dollar_format(big.mark = &quot;.&quot;, 
+                                                    decimal.mark = &quot;,&quot;, 
+                                                    prefix = &quot;&quot;, 
+                                                    suffix = &quot; €&quot;)) +
+  labs(
+    title    = &quot;Revenue by state&quot;,
+    x = &quot;&quot;,
+    y = &quot;Revenue&quot;
+  ) +
+  
+theme(axis.text.x = element_text(angle = 45, hjust = 1))</code></pre>
+<p><img src="01_tidyverse_files/figure-html/unnamed-chunk-3-1.png" width="1344" /></p>
 </div>
 </div>
+<div id="sales-by-year-and-state" class="section level2">
+<h2><span class="header-section-number">1.2</span> Sales by Year And State</h2>
+<p>Once again this part is very similar to section 6.2 from the tutorial and was thus implemented the same way.</p>
+<div id="data-wrangling-1" class="section level3">
+<h3><span class="header-section-number">1.2.1</span> Data Wrangling</h3>
+<p>Select the columns and add a column called ‘year’. Then group and summarize over both year and state.</p>
+<pre class="r"><code>sales_by_year_state_tbl &lt;- bike_orderlines_wrangled_tbl %&gt;%
+  
+  select(order_date, total_price, state) %&gt;%
+  mutate(year = year(order_date)) %&gt;%
+  
+  group_by(state, year) %&gt;%
+  summarise(sales = sum(total_price)) %&gt;%
+  ungroup() %&gt;%
+  
+  mutate(sales_text = scales::dollar(sales, big.mark = &quot;.&quot;, 
+                                     decimal.mark = &quot;,&quot;, 
+                                     prefix = &quot;&quot;, 
+                                     suffix = &quot; €&quot;))</code></pre>
 </div>
-<div id="my-second-post-note-the-order" class="section level1">
-<h1><span class="header-section-number">2</span> My second post (note the order)</h1>
-<p>Last compiled: 2021-04-21</p>
-<p>I’m writing this tutorial going from the top down. And, this is how it will be printed. So, notice the second post is second in the list. If you want your most recent post to be at the top, then make a new post starting at the top. If you want the oldest first, do, then keep adding to the bottom</p>
+<div id="plot-data-1" class="section level3">
+<h3><span class="header-section-number">1.2.2</span> Plot Data</h3>
+<pre class="r"><code>sales_by_year_state_tbl %&gt;%
+  
+  ggplot(aes(x = year, y = sales, fill = state)) +
+  
+  geom_col() +
+  
+  facet_wrap(~ state) +
+  
+  scale_y_continuous(labels = scales::dollar_format(big.mark = &quot;.&quot;, 
+                                                    decimal.mark = &quot;,&quot;, 
+                                                    prefix = &quot;&quot;, 
+                                                    suffix = &quot; €&quot;)) +
+  labs(
+    title = &quot;Revenue by year and state&quot;,
+    fill = &quot;state&quot;
+  )+
+  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))</code></pre>
+<p><img src="01_tidyverse_files/figure-html/unnamed-chunk-5-1.png" width="1344" /></p>
 </div>
-<div id="adding-r-stuff" class="section level1">
-<h1><span class="header-section-number">3</span> Adding R stuff</h1>
-<p>So far this is just a blog where you can write in plain text and serve your writing to a webpage. One of the main purposes of this lab journal is to record your progress learning R. The reason I am asking you to use this process is because you can both make a website, and a lab journal, and learn R all in R-studio. This makes everything really convenient and in the same place.</p>
-<p>So, let’s say you are learning how to make a histogram in R. For example, maybe you want to sample 100 numbers from a normal distribution with mean = 0, and standard deviation = 1, and then you want to plot a histogram. You can do this right here by using an r code block, like this:</p>
-<pre class="r"><code>samples &lt;- rnorm(100, mean=0, sd=1)
-hist(samples)</code></pre>
-<p><img src="01_tidyverse_files/figure-html/unnamed-chunk-1-1.png" width="672" /></p>
-<p>When you knit this R Markdown document, you will see that the histogram is printed to the page, along with the R code. This document can be set up to hide the R code in the webpage, just delete the comment (hashtag) from the cold folding option in the yaml header up top. For purposes of letting yourself see the code, and me see the code, best to keep it the way that it is. You’ll learn that all of these things and more can be customized in each R code block.</p>
+</div>
 </div>
 
 
