@@ -21,108 +21,270 @@ knitr::opts_chunk$set(message=FALSE,warning=FALSE, cache=TRUE)
 
 Last compiled: `r Sys.Date()`
 
-## Sales by State
-This section is pretty straight forward since it is basically the same as in section 6.1 from the tutorial. The column "location" was serpated into the two columns "city" and "state" before. It was then saved and can now be easily imported.
-
-
-### Load libraries and read data
+## Load libraries
 ```{r}
 library(tidyverse)
 library(readxl)
 library(lubridate)
 library(ggplot2)
-
-
-bike_orderlines_wrangled_tbl  <- read_excel(path = "ds_data/01_bike_sales/02_wrangled_data/bike_orderlines.xlsx")
+library("writexl")
 ```
 
-### Data Wrangling
+## Importing Files
+```{r}
+bikes_tbl <- read_excel(path = "ds_data/01_bike_sales/01_raw_data/bikes.xlsx")
+orderlines_tbl <- read_excel("ds_data/01_bike_sales/01_raw_data/orderlines.xlsx")
+bikeshops_tbl  <- read_excel("ds_data/01_bike_sales/01_raw_data/bikeshops.xlsx")
+```
 
-Group by state and then summarize the sales.
+## Joining Data
+```{r}
+bike_orderlines_joined_tbl <- orderlines_tbl %>%
+  left_join(bikes_tbl, by = c("product.id" = "bike.id")) %>%
+  left_join(bikeshops_tbl, by = c("customer.id" = "bikeshop.id"))
+```
+
+## Wrangling Data
+```{r}
+bike_orderlines_wrangled_tbl <- bike_orderlines_joined_tbl %>%
+  # Separate category name
+  separate(col    = category,
+           into   = c("category.1", "category.2", "category.3"),
+           sep    = " - ") %>%
+  
+  # Add the total price (price * quantity) 
+  # Add a column to a tibble that uses a formula-style calculation of other columns
+  mutate(total.price = price * quantity) %>%
+  
+  # Optional: Reorganize. Using select to grab or remove unnecessary columns
+  # by exact column name
+  select(-...1, -gender) %>%
+  
+  # by a pattern
+  # You can use the select_helpers to define patterns. 
+  # Type ?ends_with and click on Select helpers in the documentation
+  select(-ends_with(".id")) %>%
+  
+  # Actually we need the column "order.id". Let's bind it back to the data
+  bind_cols(bike_orderlines_joined_tbl %>% select(order.id)) %>% 
+  
+  # You can reorder the data by selecting the columns in your desired order.
+  # You can use select_helpers like contains() or everything()
+  select(order.id, contains("order"), contains("model"), contains("category"),
+         price, quantity, total.price,
+         everything()) %>%
+  
+  # Rename columns because we actually wanted underscores instead of the dots
+  # (one at the time vs. multiple at once)
+  rename(bikeshop = name) %>%
+  set_names(names(.) %>% str_replace_all("\\.", "_"))
+```
+
+## Business Insights
+
+### Sales by Year
 
 ```{r}
-sales_by_state_tbl <- bike_orderlines_wrangled_tbl %>%
+# Step 1 - Manipulate
+sales_by_year_tbl <- bike_orderlines_wrangled_tbl %>%
   
-  select(state, total_price) %>%
+  # Select columns
+  select(order_date, total_price) %>%
   
-  group_by(state) %>% 
+  # Add year column
+  mutate(year = year(order_date)) %>%
+  
+  # Grouping by year and summarizing sales
+  group_by(year) %>% 
   summarize(sales = sum(total_price)) %>%
-
+  
+  # Optional: Add a column that turns the numbers into a currency format 
+  # (makes it in the plot optically more appealing)
+  # mutate(sales_text = scales::dollar(sales)) <- Works for dollar values
   mutate(sales_text = scales::dollar(sales, big.mark = ".", 
                                      decimal.mark = ",", 
                                      prefix = "", 
                                      suffix = " €"))
+
+sales_by_year_tbl
+
+# Step 2 - Visualize
+sales_by_year_tbl %>%
+  
+  # Setup canvas with the columns year (x-axis) and sales (y-axis)
+  ggplot(aes(x = year, y = sales)) +
+  
+  # Geometries
+  geom_col(fill = "#2DC6D6") + # Use geom_col for a bar plot
+  geom_label(aes(label = sales_text)) + # Adding labels to the bars
+  geom_smooth(method = "lm", se = FALSE) + # Adding a trendline
+  
+  # Formatting
+  # scale_y_continuous(labels = scales::dollar) + # Change the y-axis. 
+  # Again, we have to adjust it for euro values
+  scale_y_continuous(labels = scales::dollar_format(big.mark = ".", 
+                                                    decimal.mark = ",", 
+                                                    prefix = "", 
+                                                    suffix = " €")) +
+  labs(
+    title    = "Revenue by year",
+    subtitle = "Upward Trend",
+    x = "", # Override defaults for x and y
+    y = "Revenue"
+  )
 ```
 
-### Plot Data
+### Sales by Year and Category
 
-```{r, fig.width=14, fig.height=10}
-sales_by_state_tbl %>%
+```{r}
+# Step 1 - Manipulate
+sales_by_year_cat_1_tbl <- bike_orderlines_wrangled_tbl %>%
   
+  # Select columns and add a year
+  select(order_date, total_price, category_1) %>%
+  mutate(year = year(order_date)) %>%
+  
+  # Group by and summarize year and main catgegory
+  group_by(year, category_1) %>%
+  summarise(sales = sum(total_price)) %>%
+  ungroup() %>%
+  
+  # Format $ Text
+  mutate(sales_text = scales::dollar(sales, big.mark = ".", 
+                                     decimal.mark = ",", 
+                                     prefix = "", 
+                                     suffix = " €"))
+
+sales_by_year_cat_1_tbl  
+
+# Step 2 - Visualize
+sales_by_year_cat_1_tbl %>%
+  
+  # Set up x, y, fill
+  ggplot(aes(x = year, y = sales, fill = category_1)) +
+  
+  # Geometries
+  geom_col() + # Run up to here to get a stacked bar plot
+  
+  # Facet
+  facet_wrap(~ category_1) +
+  
+  # Formatting
+  scale_y_continuous(labels = scales::dollar_format(big.mark = ".", 
+                                                    decimal.mark = ",", 
+                                                    prefix = "", 
+                                                    suffix = " €")) +
+  labs(
+    title = "Revenue by year and main category",
+    subtitle = "Each product category has an upward trend",
+    fill = "Main category" # Changes the legend name
+  )
+```
+
+## Challenges
+
+### Sales By Location
+This is pretty straightforward as it is really similar to chapter 6.
+
+```{r}
+# Separate location into state and city
+bike_orderlines_wrangled_tbl <- bike_orderlines_wrangled_tbl %>%
+  separate(col    = location,
+           into   = c("city", "state"),
+           sep    = ", ")
+
+sales_by_location_tbl <- bike_orderlines_wrangled_tbl %>%
+  
+  # Select columns
+  select(state, total_price) %>%
+  
+  # Grouping by state and summarizing sales
+  group_by(state) %>% 
+  summarize(sales = sum(total_price)) %>%
+  
+  # Optional: Add a column that turns the numbers into a currency format 
+  # (makes it in the plot optically more appealing)
+  # mutate(sales_text = scales::dollar(sales)) <- Works for dollar values
+  mutate(sales_text = scales::dollar(sales, big.mark = ".", 
+                                     decimal.mark = ",", 
+                                     prefix = "", 
+                                     suffix = " €"))
+
+sales_by_location_tbl
+
+# plot data
+sales_by_location_tbl %>%
+  
+  # Setup canvas with the columns state (x-axis) and sales (y-axis)
   ggplot(aes(x = state, y = sales)) +
   
-  geom_col(fill = "#2DC6D6") +
-  geom_label(aes(label = sales_text)) +
+  # Geometries
+  geom_col(fill = "#2DC6D6") + # Use geom_col for a bar plot
+  geom_label(aes(label = sales_text)) + # Adding labels to the bars
   
+  # Formatting
+  # scale_y_continuous(labels = scales::dollar) + # Change the y-axis. 
+  # Again, we have to adjust it for euro values
   scale_y_continuous(labels = scales::dollar_format(big.mark = ".", 
                                                     decimal.mark = ",", 
                                                     prefix = "", 
                                                     suffix = " €")) +
   labs(
     title    = "Revenue by state",
-    x = "",
+    #subtitle = "Upward Trend",
+    x = "", # Override defaults for x and y
     y = "Revenue"
   ) +
   
 theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
 ```
 
-## Sales by Year And State
-
-Once again this part is very similar to section 6.2 from the tutorial and was thus implemented the same way.
-
-
-### Data Wrangling
-
-Select the columns and add a column called 'year'. Then group and summarize over both year and state.
+### Sales By Location And Year
+This part is also pretty similar to chapter 6.
 
 ```{r}
+# Step 1 - Manipulate
 sales_by_year_state_tbl <- bike_orderlines_wrangled_tbl %>%
   
+  # Select columns and add a year
   select(order_date, total_price, state) %>%
   mutate(year = year(order_date)) %>%
   
+  # Group by and summarize year and state
   group_by(state, year) %>%
   summarise(sales = sum(total_price)) %>%
   ungroup() %>%
   
+  # Format $ Text
   mutate(sales_text = scales::dollar(sales, big.mark = ".", 
                                      decimal.mark = ",", 
                                      prefix = "", 
                                      suffix = " €"))
-```
 
-### Plot Data
+sales_by_year_state_tbl %>% head(n = 5)
 
-```{r, fig.width=14, fig.height=10}
+# Step 2 - Visualize
 sales_by_year_state_tbl %>%
   
+  # Set up x, y, fill
   ggplot(aes(x = year, y = sales, fill = state)) +
   
-  geom_col() +
+  # Geometries
+  geom_col() + # Run up to here to get a stacked bar plot
   
+  # Facet
   facet_wrap(~ state) +
   
+  # Formatting
   scale_y_continuous(labels = scales::dollar_format(big.mark = ".", 
                                                     decimal.mark = ",", 
                                                     prefix = "", 
                                                     suffix = " €")) +
   labs(
     title = "Revenue by year and state",
-    fill = "state"
+    #subtitle = "Each product category has an upward trend",
+    fill = "state" # Changes the legend name
   )+
   
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
 ```

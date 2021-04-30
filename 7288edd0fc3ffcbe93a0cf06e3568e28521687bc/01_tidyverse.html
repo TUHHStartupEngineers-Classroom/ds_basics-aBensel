@@ -383,99 +383,283 @@ div.tocify {
 
 <div id="tidyverse" class="section level1">
 <h1><span class="header-section-number">1</span> Tidyverse</h1>
-<p>Last compiled: 2021-04-28</p>
-<div id="sales-by-state" class="section level2">
-<h2><span class="header-section-number">1.1</span> Sales by State</h2>
-<p>This section is pretty straight forward since it is basically the same as in section 6.1 from the tutorial. The column “location” was serpated into the two columns “city” and “state” before. It was then saved and can now be easily imported.</p>
-<div id="load-libraries-and-read-data" class="section level3">
-<h3><span class="header-section-number">1.1.1</span> Load libraries and read data</h3>
+<p>Last compiled: 2021-05-01</p>
+<div id="load-libraries" class="section level2">
+<h2><span class="header-section-number">1.1</span> Load libraries</h2>
 <pre class="r"><code>library(tidyverse)
 library(readxl)
 library(lubridate)
 library(ggplot2)
-
-
-bike_orderlines_wrangled_tbl  &lt;- read_excel(path = &quot;ds_data/01_bike_sales/02_wrangled_data/bike_orderlines.xlsx&quot;)</code></pre>
+library(&quot;writexl&quot;)</code></pre>
 </div>
-<div id="data-wrangling" class="section level3">
-<h3><span class="header-section-number">1.1.2</span> Data Wrangling</h3>
-<p>Group by state and then summarize the sales.</p>
-<pre class="r"><code>sales_by_state_tbl &lt;- bike_orderlines_wrangled_tbl %&gt;%
+<div id="importing-files" class="section level2">
+<h2><span class="header-section-number">1.2</span> Importing Files</h2>
+<pre class="r"><code>bikes_tbl &lt;- read_excel(path = &quot;ds_data/01_bike_sales/01_raw_data/bikes.xlsx&quot;)
+orderlines_tbl &lt;- read_excel(&quot;ds_data/01_bike_sales/01_raw_data/orderlines.xlsx&quot;)
+bikeshops_tbl  &lt;- read_excel(&quot;ds_data/01_bike_sales/01_raw_data/bikeshops.xlsx&quot;)</code></pre>
+</div>
+<div id="joining-data" class="section level2">
+<h2><span class="header-section-number">1.3</span> Joining Data</h2>
+<pre class="r"><code>bike_orderlines_joined_tbl &lt;- orderlines_tbl %&gt;%
+  left_join(bikes_tbl, by = c(&quot;product.id&quot; = &quot;bike.id&quot;)) %&gt;%
+  left_join(bikeshops_tbl, by = c(&quot;customer.id&quot; = &quot;bikeshop.id&quot;))</code></pre>
+</div>
+<div id="wrangling-data" class="section level2">
+<h2><span class="header-section-number">1.4</span> Wrangling Data</h2>
+<pre class="r"><code>bike_orderlines_wrangled_tbl &lt;- bike_orderlines_joined_tbl %&gt;%
+  # Separate category name
+  separate(col    = category,
+           into   = c(&quot;category.1&quot;, &quot;category.2&quot;, &quot;category.3&quot;),
+           sep    = &quot; - &quot;) %&gt;%
   
-  select(state, total_price) %&gt;%
+  # Add the total price (price * quantity) 
+  # Add a column to a tibble that uses a formula-style calculation of other columns
+  mutate(total.price = price * quantity) %&gt;%
   
-  group_by(state) %&gt;% 
+  # Optional: Reorganize. Using select to grab or remove unnecessary columns
+  # by exact column name
+  select(-...1, -gender) %&gt;%
+  
+  # by a pattern
+  # You can use the select_helpers to define patterns. 
+  # Type ?ends_with and click on Select helpers in the documentation
+  select(-ends_with(&quot;.id&quot;)) %&gt;%
+  
+  # Actually we need the column &quot;order.id&quot;. Let&#39;s bind it back to the data
+  bind_cols(bike_orderlines_joined_tbl %&gt;% select(order.id)) %&gt;% 
+  
+  # You can reorder the data by selecting the columns in your desired order.
+  # You can use select_helpers like contains() or everything()
+  select(order.id, contains(&quot;order&quot;), contains(&quot;model&quot;), contains(&quot;category&quot;),
+         price, quantity, total.price,
+         everything()) %&gt;%
+  
+  # Rename columns because we actually wanted underscores instead of the dots
+  # (one at the time vs. multiple at once)
+  rename(bikeshop = name) %&gt;%
+  set_names(names(.) %&gt;% str_replace_all(&quot;\\.&quot;, &quot;_&quot;))</code></pre>
+</div>
+<div id="business-insights" class="section level2">
+<h2><span class="header-section-number">1.5</span> Business Insights</h2>
+<div id="sales-by-year" class="section level3">
+<h3><span class="header-section-number">1.5.1</span> Sales by Year</h3>
+<pre class="r"><code># Step 1 - Manipulate
+sales_by_year_tbl &lt;- bike_orderlines_wrangled_tbl %&gt;%
+  
+  # Select columns
+  select(order_date, total_price) %&gt;%
+  
+  # Add year column
+  mutate(year = year(order_date)) %&gt;%
+  
+  # Grouping by year and summarizing sales
+  group_by(year) %&gt;% 
   summarize(sales = sum(total_price)) %&gt;%
-
+  
+  # Optional: Add a column that turns the numbers into a currency format 
+  # (makes it in the plot optically more appealing)
+  # mutate(sales_text = scales::dollar(sales)) &lt;- Works for dollar values
   mutate(sales_text = scales::dollar(sales, big.mark = &quot;.&quot;, 
                                      decimal.mark = &quot;,&quot;, 
                                      prefix = &quot;&quot;, 
-                                     suffix = &quot; €&quot;))</code></pre>
+                                     suffix = &quot; €&quot;))
+
+sales_by_year_tbl</code></pre>
+<div data-pagedtable="false">
+<script data-pagedtable-source type="application/json">
+{"columns":[{"label":["year"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["sales"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["sales_text"],"name":[3],"type":["chr"],"align":["left"]}],"data":[{"1":"2015","2":"9930282","3":"9.930.282 \\200"},{"1":"2016","2":"10730507","3":"10.730.507 \\200"},{"1":"2017","2":"14510291","3":"14.510.291 \\200"},{"1":"2018","2":"12241853","3":"12.241.853 \\200"},{"1":"2019","2":"15017875","3":"15.017.875 \\200"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
 </div>
-<div id="plot-data" class="section level3">
-<h3><span class="header-section-number">1.1.3</span> Plot Data</h3>
-<pre class="r"><code>sales_by_state_tbl %&gt;%
+<pre class="r"><code># Step 2 - Visualize
+sales_by_year_tbl %&gt;%
   
+  # Setup canvas with the columns year (x-axis) and sales (y-axis)
+  ggplot(aes(x = year, y = sales)) +
+  
+  # Geometries
+  geom_col(fill = &quot;#2DC6D6&quot;) + # Use geom_col for a bar plot
+  geom_label(aes(label = sales_text)) + # Adding labels to the bars
+  geom_smooth(method = &quot;lm&quot;, se = FALSE) + # Adding a trendline
+  
+  # Formatting
+  # scale_y_continuous(labels = scales::dollar) + # Change the y-axis. 
+  # Again, we have to adjust it for euro values
+  scale_y_continuous(labels = scales::dollar_format(big.mark = &quot;.&quot;, 
+                                                    decimal.mark = &quot;,&quot;, 
+                                                    prefix = &quot;&quot;, 
+                                                    suffix = &quot; €&quot;)) +
+  labs(
+    title    = &quot;Revenue by year&quot;,
+    subtitle = &quot;Upward Trend&quot;,
+    x = &quot;&quot;, # Override defaults for x and y
+    y = &quot;Revenue&quot;
+  )</code></pre>
+<p><img src="01_tidyverse_files/figure-html/unnamed-chunk-5-1.png" width="672" /></p>
+</div>
+<div id="sales-by-year-and-category" class="section level3">
+<h3><span class="header-section-number">1.5.2</span> Sales by Year and Category</h3>
+<pre class="r"><code># Step 1 - Manipulate
+sales_by_year_cat_1_tbl &lt;- bike_orderlines_wrangled_tbl %&gt;%
+  
+  # Select columns and add a year
+  select(order_date, total_price, category_1) %&gt;%
+  mutate(year = year(order_date)) %&gt;%
+  
+  # Group by and summarize year and main catgegory
+  group_by(year, category_1) %&gt;%
+  summarise(sales = sum(total_price)) %&gt;%
+  ungroup() %&gt;%
+  
+  # Format $ Text
+  mutate(sales_text = scales::dollar(sales, big.mark = &quot;.&quot;, 
+                                     decimal.mark = &quot;,&quot;, 
+                                     prefix = &quot;&quot;, 
+                                     suffix = &quot; €&quot;))
+
+sales_by_year_cat_1_tbl  </code></pre>
+<div data-pagedtable="false">
+<script data-pagedtable-source type="application/json">
+{"columns":[{"label":["year"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["category_1"],"name":[2],"type":["chr"],"align":["left"]},{"label":["sales"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["sales_text"],"name":[4],"type":["chr"],"align":["left"]}],"data":[{"1":"2015","2":"E-Bikes","3":"1599048","4":"1.599.048 \\200"},{"1":"2015","2":"Gravel","3":"663025","4":"663.025 \\200"},{"1":"2015","2":"Hybrid / City","3":"502512","4":"502.512 \\200"},{"1":"2015","2":"Mountain","3":"3254289","4":"3.254.289 \\200"},{"1":"2015","2":"Road","3":"3911408","4":"3.911.408 \\200"},{"1":"2016","2":"E-Bikes","3":"1916469","4":"1.916.469 \\200"},{"1":"2016","2":"Gravel","3":"768794","4":"768.794 \\200"},{"1":"2016","2":"Hybrid / City","3":"512346","4":"512.346 \\200"},{"1":"2016","2":"Mountain","3":"3288733","4":"3.288.733 \\200"},{"1":"2016","2":"Road","3":"4244165","4":"4.244.165 \\200"},{"1":"2017","2":"E-Bikes","3":"2617352","4":"2.617.352 \\200"},{"1":"2017","2":"Gravel","3":"1006839","4":"1.006.839 \\200"},{"1":"2017","2":"Hybrid / City","3":"784491","4":"784.491 \\200"},{"1":"2017","2":"Mountain","3":"4482867","4":"4.482.867 \\200"},{"1":"2017","2":"Road","3":"5618742","4":"5.618.742 \\200"},{"1":"2018","2":"E-Bikes","3":"2151550","4":"2.151.550 \\200"},{"1":"2018","2":"Gravel","3":"792234","4":"792.234 \\200"},{"1":"2018","2":"Hybrid / City","3":"576805","4":"576.805 \\200"},{"1":"2018","2":"Mountain","3":"4090277","4":"4.090.277 \\200"},{"1":"2018","2":"Road","3":"4630987","4":"4.630.987 \\200"},{"1":"2019","2":"E-Bikes","3":"2667921","4":"2.667.921 \\200"},{"1":"2019","2":"Gravel","3":"1169038","4":"1.169.038 \\200"},{"1":"2019","2":"Hybrid / City","3":"617064","4":"617.064 \\200"},{"1":"2019","2":"Mountain","3":"4674327","4":"4.674.327 \\200"},{"1":"2019","2":"Road","3":"5889525","4":"5.889.525 \\200"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+<pre class="r"><code># Step 2 - Visualize
+sales_by_year_cat_1_tbl %&gt;%
+  
+  # Set up x, y, fill
+  ggplot(aes(x = year, y = sales, fill = category_1)) +
+  
+  # Geometries
+  geom_col() + # Run up to here to get a stacked bar plot
+  
+  # Facet
+  facet_wrap(~ category_1) +
+  
+  # Formatting
+  scale_y_continuous(labels = scales::dollar_format(big.mark = &quot;.&quot;, 
+                                                    decimal.mark = &quot;,&quot;, 
+                                                    prefix = &quot;&quot;, 
+                                                    suffix = &quot; €&quot;)) +
+  labs(
+    title = &quot;Revenue by year and main category&quot;,
+    subtitle = &quot;Each product category has an upward trend&quot;,
+    fill = &quot;Main category&quot; # Changes the legend name
+  )</code></pre>
+<p><img src="01_tidyverse_files/figure-html/unnamed-chunk-6-1.png" width="672" /></p>
+</div>
+</div>
+<div id="challenges" class="section level2">
+<h2><span class="header-section-number">1.6</span> Challenges</h2>
+<div id="sales-by-location" class="section level3">
+<h3><span class="header-section-number">1.6.1</span> Sales By Location</h3>
+<p>This is pretty straightforward as it is really similar to chapter 6.</p>
+<pre class="r"><code># Separate location into state and city
+bike_orderlines_wrangled_tbl &lt;- bike_orderlines_wrangled_tbl %&gt;%
+  separate(col    = location,
+           into   = c(&quot;city&quot;, &quot;state&quot;),
+           sep    = &quot;, &quot;)
+
+sales_by_location_tbl &lt;- bike_orderlines_wrangled_tbl %&gt;%
+  
+  # Select columns
+  select(state, total_price) %&gt;%
+  
+  # Grouping by state and summarizing sales
+  group_by(state) %&gt;% 
+  summarize(sales = sum(total_price)) %&gt;%
+  
+  # Optional: Add a column that turns the numbers into a currency format 
+  # (makes it in the plot optically more appealing)
+  # mutate(sales_text = scales::dollar(sales)) &lt;- Works for dollar values
+  mutate(sales_text = scales::dollar(sales, big.mark = &quot;.&quot;, 
+                                     decimal.mark = &quot;,&quot;, 
+                                     prefix = &quot;&quot;, 
+                                     suffix = &quot; €&quot;))
+
+sales_by_location_tbl</code></pre>
+<div data-pagedtable="false">
+<script data-pagedtable-source type="application/json">
+{"columns":[{"label":["state"],"name":[1],"type":["chr"],"align":["left"]},{"label":["sales"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["sales_text"],"name":[3],"type":["chr"],"align":["left"]}],"data":[{"1":"Baden-Württemberg","2":"6521090","3":"6.521.090 \\200"},{"1":"Bavaria","2":"6742819","3":"6.742.819 \\200"},{"1":"Berlin","2":"1128433","3":"1.128.433 \\200"},{"1":"Bremen","2":"10653499","3":"10.653.499 \\200"},{"1":"Hamburg","2":"3874756","3":"3.874.756 \\200"},{"1":"Hesse","2":"1558901","3":"1.558.901 \\200"},{"1":"Lower Saxony","2":"4107115","3":"4.107.115 \\200"},{"1":"Mecklenburg-Western Pomerania","2":"618974","3":"618.974 \\200"},{"1":"North Rhine-Westphalia","2":"21200613","3":"21.200.613 \\200"},{"1":"Saxony","2":"2230245","3":"2.230.245 \\200"},{"1":"Saxony-Anhalt","2":"569614","3":"569.614 \\200"},{"1":"Schleswig-Holstein","2":"3224749","3":"3.224.749 \\200"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+<pre class="r"><code># plot data
+sales_by_location_tbl %&gt;%
+  
+  # Setup canvas with the columns state (x-axis) and sales (y-axis)
   ggplot(aes(x = state, y = sales)) +
   
-  geom_col(fill = &quot;#2DC6D6&quot;) +
-  geom_label(aes(label = sales_text)) +
+  # Geometries
+  geom_col(fill = &quot;#2DC6D6&quot;) + # Use geom_col for a bar plot
+  geom_label(aes(label = sales_text)) + # Adding labels to the bars
   
+  # Formatting
+  # scale_y_continuous(labels = scales::dollar) + # Change the y-axis. 
+  # Again, we have to adjust it for euro values
   scale_y_continuous(labels = scales::dollar_format(big.mark = &quot;.&quot;, 
                                                     decimal.mark = &quot;,&quot;, 
                                                     prefix = &quot;&quot;, 
                                                     suffix = &quot; €&quot;)) +
   labs(
     title    = &quot;Revenue by state&quot;,
-    x = &quot;&quot;,
+    #subtitle = &quot;Upward Trend&quot;,
+    x = &quot;&quot;, # Override defaults for x and y
     y = &quot;Revenue&quot;
   ) +
   
 theme(axis.text.x = element_text(angle = 45, hjust = 1))</code></pre>
-<p><img src="01_tidyverse_files/figure-html/unnamed-chunk-3-1.png" width="1344" /></p>
+<p><img src="01_tidyverse_files/figure-html/unnamed-chunk-7-1.png" width="672" /></p>
 </div>
-</div>
-<div id="sales-by-year-and-state" class="section level2">
-<h2><span class="header-section-number">1.2</span> Sales by Year And State</h2>
-<p>Once again this part is very similar to section 6.2 from the tutorial and was thus implemented the same way.</p>
-<div id="data-wrangling-1" class="section level3">
-<h3><span class="header-section-number">1.2.1</span> Data Wrangling</h3>
-<p>Select the columns and add a column called ‘year’. Then group and summarize over both year and state.</p>
-<pre class="r"><code>sales_by_year_state_tbl &lt;- bike_orderlines_wrangled_tbl %&gt;%
+<div id="sales-by-location-and-year" class="section level3">
+<h3><span class="header-section-number">1.6.2</span> Sales By Location And Year</h3>
+<p>This part is also pretty similar to chapter 6.</p>
+<pre class="r"><code># Step 1 - Manipulate
+sales_by_year_state_tbl &lt;- bike_orderlines_wrangled_tbl %&gt;%
   
+  # Select columns and add a year
   select(order_date, total_price, state) %&gt;%
   mutate(year = year(order_date)) %&gt;%
   
+  # Group by and summarize year and state
   group_by(state, year) %&gt;%
   summarise(sales = sum(total_price)) %&gt;%
   ungroup() %&gt;%
   
+  # Format $ Text
   mutate(sales_text = scales::dollar(sales, big.mark = &quot;.&quot;, 
                                      decimal.mark = &quot;,&quot;, 
                                      prefix = &quot;&quot;, 
-                                     suffix = &quot; €&quot;))</code></pre>
+                                     suffix = &quot; €&quot;))
+
+sales_by_year_state_tbl %&gt;% head(n = 5)</code></pre>
+<div data-pagedtable="false">
+<script data-pagedtable-source type="application/json">
+{"columns":[{"label":["state"],"name":[1],"type":["chr"],"align":["left"]},{"label":["year"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["sales"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["sales_text"],"name":[4],"type":["chr"],"align":["left"]}],"data":[{"1":"Baden-Württemberg","2":"2015","3":"1031924","4":"1.031.924 \\200"},{"1":"Baden-Württemberg","2":"2016","3":"1561658","4":"1.561.658 \\200"},{"1":"Baden-Württemberg","2":"2017","3":"1224152","4":"1.224.152 \\200"},{"1":"Baden-Württemberg","2":"2018","3":"1114327","4":"1.114.327 \\200"},{"1":"Baden-Württemberg","2":"2019","3":"1589029","4":"1.589.029 \\200"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
 </div>
-<div id="plot-data-1" class="section level3">
-<h3><span class="header-section-number">1.2.2</span> Plot Data</h3>
-<pre class="r"><code>sales_by_year_state_tbl %&gt;%
+<pre class="r"><code># Step 2 - Visualize
+sales_by_year_state_tbl %&gt;%
   
+  # Set up x, y, fill
   ggplot(aes(x = year, y = sales, fill = state)) +
   
-  geom_col() +
+  # Geometries
+  geom_col() + # Run up to here to get a stacked bar plot
   
+  # Facet
   facet_wrap(~ state) +
   
+  # Formatting
   scale_y_continuous(labels = scales::dollar_format(big.mark = &quot;.&quot;, 
                                                     decimal.mark = &quot;,&quot;, 
                                                     prefix = &quot;&quot;, 
                                                     suffix = &quot; €&quot;)) +
   labs(
     title = &quot;Revenue by year and state&quot;,
-    fill = &quot;state&quot;
+    #subtitle = &quot;Each product category has an upward trend&quot;,
+    fill = &quot;state&quot; # Changes the legend name
   )+
   
   theme(axis.text.x = element_text(angle = 45, hjust = 1))</code></pre>
-<p><img src="01_tidyverse_files/figure-html/unnamed-chunk-5-1.png" width="1344" /></p>
+<p><img src="01_tidyverse_files/figure-html/unnamed-chunk-8-1.png" width="672" /></p>
 </div>
 </div>
 </div>
