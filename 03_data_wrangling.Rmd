@@ -16,39 +16,154 @@ output:
 knitr::opts_chunk$set(message=FALSE,warning=FALSE, cache=TRUE)
 ```
 
-**IMPORTANT:** You can delete everything in here and start fresh. You might want to start by not deleting anything above this line until you know what that stuff is doing.
-
-This is an `.Rmd` file. It is plain text with special features. Any time you write just like this, it will be compiled to normal text in the website. If you put a \# in front of your text, it will create a top level-header.
-
-# My first post
+# Data Wrangling
 
 Last compiled: `r Sys.Date()`
 
-Notice that whatever you define as a top level header, automatically gets put into the table of contents bar on the left. 
+I chose to work with the smaller data set.
 
-## Second level header
-
-You can add more headers by adding more hashtags. These won't be put into the table of contents
-
-### third level header
-
-Here's an even lower level header
-
-# My second post (note the order)
-
-Last compiled: `r Sys.Date()`
-
-I'm writing this tutorial going from the top down. And, this is how it will be printed. So, notice the second post is second in the list. If you want your most recent post to be at the top, then make a new post starting at the top. If you want the oldest first, do, then keep adding to the bottom
-
-# Adding R stuff
-
-So far this is just a blog where you can write in plain text and serve your writing to a webpage. One of the main purposes of this lab journal is to record your progress learning R. The reason I am asking you to use this process is because you can both make a website, and a lab journal, and learn R all in R-studio. This makes everything really convenient and in the same place. 
-
-So, let's say you are learning how to make a histogram in R. For example, maybe you want to sample 100 numbers from a normal distribution with mean = 0, and standard deviation = 1, and then you want to plot a histogram. You can do this right here by using an r code block, like this:
+## Load Libraries
 
 ```{r}
-samples <- rnorm(100, mean=0, sd=1)
-hist(samples)
+library(vroom)
+library(tidyverse)
+library(data.table)
 ```
 
-When you knit this R Markdown document, you will see that the histogram is printed to the page, along with the R code. This document can be set up to hide the R code in the webpage, just delete the comment (hashtag) from the cold folding option in the yaml header up top. For purposes of letting yourself see the code, and me see the code, best to keep it the way that it is. You'll learn that all of these things and more can be customized in each R code block.
+## Import Data
+
+```{r}
+#uspc
+col_types_uspc <- list(
+  patent_id = col_character(),
+  mainclass_id = col_number(),
+  sequence = col_number()
+)
+
+uspc_tbl <- vroom(
+  file       = "Patent_data_reduced/uspc.tsv",
+  delim      = "\t",
+  col_types  = col_types_uspc,
+  na         = c("", "NA", "NULL")
+)
+setDT(uspc_tbl)
+
+#patent
+col_types_patent <- list(
+  id = col_character(),
+  date = col_date("%Y-%m-%d"),
+  num_claims = col_double()
+)
+
+patent_tbl <- vroom(
+  file       = "Patent_data_reduced/patent.tsv", 
+  delim      = "\t", 
+  col_types  = col_types_patent,
+  na         = c("", "NA", "NULL")
+)
+setDT(patent_tbl)
+
+#patent_assignee
+col_types_patent_assignee <- list(
+  patent_id = col_character(),
+  assignee_id = col_character()
+)
+
+
+patent_assignee_tbl <- vroom(
+  file       = "Patent_data_reduced/patent_assignee.tsv",
+  delim      = "\t",
+  col_types  = col_types_patent_assignee,
+  na         = c("", "NA", "NULL")
+)
+setDT(patent_assignee_tbl)
+
+#assignee
+col_types_assignee <- list(
+  id = col_character(),
+  type = col_character(),
+  organization = col_character()
+)
+
+assignee_tbl <- vroom(
+  file       = "Patent_data_reduced/assignee.tsv",
+  delim      = "\t",
+  col_types  = col_types_assignee,
+  na         = c("", "NA", "NULL")
+)
+setDT(assignee_tbl)
+```
+
+## Patent Dominance
+
+List of top 10 US companies with the most assigned patents.
+```{r}
+us_top10_companies <- merge(x = patent_assignee_tbl, y = assignee_tbl, by.x="assignee_id", by.y="id") %>%
+  filter(type == 2)%>%
+  filter(!is.na(patent_id) || !is.na(organization)) %>%
+  select(organization, patent_id) %>%
+  group_by(organization) %>%
+  count() %>%
+  arrange(desc(n)) %>%  
+  head(n = 10)
+
+us_top10_companies
+```
+
+## Recent Patent Activity
+
+List of top 10 US companies with the most new assigned patents for August 2014
+```{r}
+us_top10_aug_14 <- merge(x = patent_tbl, y = patent_assignee_tbl, by.x="id", by.y="patent_id") %>%
+  merge(y = assignee_tbl, by.x="assignee_id", by.y="id")%>%
+  filter(type == 2)%>%
+  filter(!is.na(id) || !is.na(organization)) %>%
+  separate(col  = date,
+           into = c("year", "month", "day"),
+           sep  = "-", remove = TRUE) %>%
+  mutate(
+    month = as.numeric(month)
+  )%>%
+  filter(month == 08)%>%
+  select(-year, -month, -day, -assignee_id, -num_claims, -type) %>%
+  group_by(organization) %>%
+  count() %>%
+  arrange(desc(n)) %>%  
+  head(n = 10)
+
+us_top10_aug_14
+```
+
+## Innovation in Tech
+
+### Top 10 Companies Worldwide
+
+```{r}
+worldwide_top10 <- merge(x = patent_assignee_tbl, y = assignee_tbl, by.x="assignee_id", by.y="id") %>%
+  filter(!is.na(patent_id) || !is.na(organization)) %>%
+  group_by(organization) %>%
+  count(patent_id) %>%
+  summarise(total_patents = sum(n))%>%
+  arrange(desc(total_patents)) %>%
+  filter(!is.na(organization)) %>%
+  ungroup() %>%
+  head(n = 10)
+
+worldwide_top10
+```
+
+### Top 5 USPTO Tech Main Classes From The Top 10 Companies Worldwide
+
+```{r}
+top5_USPTO <- merge(x = uspc_tbl, y = patent_assignee_tbl, by = 'patent_id') %>%
+  merge(y = assignee_tbl, by.x="assignee_id", by.y="id") %>%
+  merge(y = worldwide_top10, by = 'organization') %>%
+  group_by(mainclass_id) %>%
+  count()%>%
+  summarise(total = sum(n))%>%
+  arrange(desc(total))%>%
+  ungroup() %>%
+  head(n = 5)
+
+top5_USPTO
+```

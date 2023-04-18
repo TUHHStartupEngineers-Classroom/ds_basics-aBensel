@@ -16,39 +16,97 @@ output:
 knitr::opts_chunk$set(message=FALSE,warning=FALSE, cache=TRUE)
 ```
 
-**IMPORTANT:** You can delete everything in here and start fresh. You might want to start by not deleting anything above this line until you know what that stuff is doing.
-
-This is an `.Rmd` file. It is plain text with special features. Any time you write just like this, it will be compiled to normal text in the website. If you put a \# in front of your text, it will create a top level-header.
-
-# My first post
+# Data Acquisition
 
 Last compiled: `r Sys.Date()`
 
-Notice that whatever you define as a top level header, automatically gets put into the table of contents bar on the left. 
+## Challenge 1: API
 
-## Second level header
+I have decided to access university data listed by country. One can simply enter a country and an output of all possible univeristies and their corresponding websites is generated as an output.
 
-You can add more headers by adding more hashtags. These won't be put into the table of contents
-
-### third level header
-
-Here's an even lower level header
-
-# My second post (note the order)
-
-Last compiled: `r Sys.Date()`
-
-I'm writing this tutorial going from the top down. And, this is how it will be printed. So, notice the second post is second in the list. If you want your most recent post to be at the top, then make a new post starting at the top. If you want the oldest first, do, then keep adding to the bottom
-
-# Adding R stuff
-
-So far this is just a blog where you can write in plain text and serve your writing to a webpage. One of the main purposes of this lab journal is to record your progress learning R. The reason I am asking you to use this process is because you can both make a website, and a lab journal, and learn R all in R-studio. This makes everything really convenient and in the same place. 
-
-So, let's say you are learning how to make a histogram in R. For example, maybe you want to sample 100 numbers from a normal distribution with mean = 0, and standard deviation = 1, and then you want to plot a histogram. You can do this right here by using an r code block, like this:
+### Load Libraries
 
 ```{r}
-samples <- rnorm(100, mean=0, sd=1)
-hist(samples)
+library(dplyr)
+library(httr)
+library(glue)
+library(rvest)
+library(stringr)
+library(purrr)
+library(tibble)
+library(tidyverse)
+library(jsonlite)
 ```
 
-When you knit this R Markdown document, you will see that the histogram is printed to the page, along with the R code. This document can be set up to hide the R code in the webpage, just delete the comment (hashtag) from the cold folding option in the yaml header up top. For purposes of letting yourself see the code, and me see the code, best to keep it the way that it is. You'll learn that all of these things and more can be customized in each R code block.
+### Write API Function
+
+```{r}
+universities_api <- function(country) {
+  url <- modify_url(url = "http://universities.hipolabs.com", path = glue("/search?country={country}"))
+  resp <- GET(url)
+  stop_for_status(resp)
+}
+```
+
+### Enter Country and Get Data
+
+```{r}
+#Argument can be any country. Replace spaces with a plus sign, e.g. in case of United States type "United+States"
+resp <- universities_api("Germany")
+
+#get into tibble
+uni_tbl <- resp %>% 
+  .$content %>% 
+  rawToChar() %>% 
+  fromJSON()
+
+#reorganize in tibble
+output_tbl <- uni_tbl %>% select(name, web_pages) %>% rename(Name = name, Website = web_pages)
+```
+
+### Output (First Five Universities)
+
+```{r}
+output_tbl %>% head(n = 5)
+```
+
+## Challenge 2: Web Scraping
+
+I have decided to scrape the names and prices of all racing bikes from rosebikes.de
+
+### Libraries
+
+All necessary libraries are already loaded.
+
+### Write Scraping Function
+
+```{r}
+scrape_data <- function(url) {
+  
+  #access html file
+  html_racing_bikes <- read_html(url)
+  
+  #get bike names by css
+  bike_name  <- html_racing_bikes %>%
+    html_nodes(css = ".catalog-category-bikes__title-text") %>%
+    html_text()%>% str_replace_all("[\r\n]" , "") %>% 
+    enframe(name = "No.", value = "Name")
+  
+  #get bike prices by css
+  bike_price  <- html_racing_bikes %>%
+    html_nodes(css = ".catalog-category-bikes__price-title") %>%
+    html_text() %>% str_replace_all("[\r\n]" , "") %>% 
+    enframe(name = "No.", value = "Price") 
+  
+  #combine prices and names and surpress output of number
+  bike_info <- left_join(bike_name,bike_price) %>% select(-("No."))
+}
+```
+
+### Enter URL and Output
+
+```{r}
+url= "https://www.rosebikes.de/fahrr%C3%A4der/rennrad"
+bike_output<-scrape_data(url)
+bike_output
+```
